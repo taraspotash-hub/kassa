@@ -1,0 +1,591 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Домашняя касса</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="theme-color" content="#2c46b5">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Касса">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<style>
+/* Layout: one narrow column like a cash book — summary strip, quick-entry card, then tabbed ledger / analytics / budget / settings */
+:root {
+  --bg: #f3f4f7; --surface: #ffffff; --surface-2: #eceef4; --line: #dadde7;
+  --fg: #1b1f2c; --muted: #646b80; --accent: #2c46b5; --on-accent: #ffffff;
+  --inc: #17804a; --inc-soft: #dcf1e4; --exp: #c23b2e; --exp-soft: #f8e1de; --warn: #a86a00; --warn-soft: #fbedcf;
+  --font: "Segoe UI Variable", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --r: 12px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #12141b; --surface: #1b1e28; --surface-2: #242836; --line: #313646;
+    --fg: #e8eaf1; --muted: #9aa1b6; --accent: #8ea2ff; --on-accent: #10132a;
+    --inc: #4fc985; --inc-soft: #183527; --exp: #f2776a; --exp-soft: #3d1f1c; --warn: #f0b44c; --warn-soft: #3a2c12;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 15px; line-height: 1.45;
+  padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+[hidden] { display: none !important; }
+.wrap { max-width: 640px; margin: 0 auto; padding-inline: 16px; padding-block: 18px 48px; display: flex; flex-direction: column; gap: 16px; }
+.num, .amt { font-variant-numeric: tabular-nums; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+header.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+h1 { font-weight: 700; font-size: 1.2rem; margin: 0; letter-spacing: -0.01em; }
+.month { display: flex; align-items: center; gap: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 2px; }
+.month button { border: 0; background: transparent; width: 36px; height: 36px; border-radius: 999px; font-size: 1.15rem; color: var(--muted); }
+.month button:hover { background: var(--surface-2); color: var(--fg); }
+.month span { min-width: 128px; text-align: center; font-weight: 600; }
+
+.banner { background: var(--warn-soft); color: var(--fg); border-radius: var(--r); padding: 10px 14px; font-size: 0.9rem; display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+
+.summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.summary > div { background: var(--surface); padding: 12px 14px; min-width: 0; }
+.lbl { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.summary .v { font-weight: 650; font-size: 1.1rem; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.summary .sub { font-size: 0.78rem; color: var(--muted); }
+.v.inc { color: var(--inc); } .v.exp { color: var(--exp); }
+
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.seg { display: grid; grid-template-columns: 1fr 1fr; background: var(--surface-2); border-radius: 10px; padding: 3px; }
+.seg button { border: 0; background: transparent; padding: 9px; border-radius: 8px; font-weight: 600; color: var(--muted); }
+.seg button[aria-pressed="true"].e { background: var(--surface); color: var(--exp); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.seg button[aria-pressed="true"].i { background: var(--surface); color: var(--inc); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.amount-row { display: flex; align-items: baseline; gap: 8px; border-bottom: 2px solid var(--line); padding-bottom: 4px; }
+.amount-row:focus-within { border-color: var(--accent); }
+#amount { border: 0; background: transparent; font-size: 2rem; font-weight: 600; width: 100%; min-width: 0; padding: 0; outline: none; font-variant-numeric: tabular-nums; }
+.amount-row .cur { font-size: 1.2rem; font-weight: 600; color: var(--muted); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 7px 12px; font-size: 0.9rem; }
+.chip:hover { border-color: var(--accent); }
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.field input, .field select, .inp { border: 1px solid var(--line); background: var(--bg); border-radius: 9px; padding: 9px 10px; width: 100%; min-width: 0; font-size: 16px; }
+.actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.btn { border: 0; border-radius: 10px; padding: 11px 18px; font-weight: 600; background: var(--accent); color: var(--on-accent); }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.ghost { background: var(--surface-2); color: var(--fg); }
+.btn.danger { background: var(--exp-soft); color: var(--exp); }
+.btn.small { padding: 7px 12px; font-size: 0.88rem; }
+.err { color: var(--exp); font-size: 0.85rem; }
+.toast { color: var(--inc); font-size: 0.88rem; font-weight: 500; }
+
+nav.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+nav.tabs button { border: 0; background: transparent; padding: 10px 12px; font-weight: 600; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+nav.tabs button[aria-selected="true"] { color: var(--accent); border-color: var(--accent); }
+
+.day { display: flex; flex-direction: column; }
+.day h3 { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 14px 0 6px; font-weight: 600; display: flex; justify-content: space-between; }
+.tx { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; padding: 10px 12px; background: var(--surface); border: 1px solid var(--line); border-top-width: 0; }
+.tx:first-of-type { border-top-width: 1px; border-radius: var(--r) var(--r) 0 0; }
+.tx:last-child { border-radius: 0 0 var(--r) var(--r); }
+.tx:only-of-type { border-radius: var(--r); }
+.tx .main { min-width: 0; cursor: pointer; }
+.tx .cat { font-weight: 500; }
+.tx .meta { font-size: 0.8rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tx .amt { font-weight: 600; white-space: nowrap; }
+.tx .amt.inc { color: var(--inc); }
+.tx .del { border: 0; background: transparent; color: var(--muted); border-radius: 8px; padding: 4px 8px; font-size: 0.85rem; }
+.tx .del:hover { background: var(--exp-soft); color: var(--exp); }
+.tx .del.confirm { background: var(--exp); color: #fff; }
+.empty { text-align: center; color: var(--muted); padding: 28px 12px; border: 1px dashed var(--line); border-radius: var(--r); }
+.empty b { color: var(--fg); display: block; margin-bottom: 4px; }
+
+.sec { display: flex; flex-direction: column; gap: 10px; }
+.sec h2 { font-size: 1rem; font-weight: 650; margin: 8px 0 0; text-wrap: balance; }
+.bars { display: flex; flex-direction: column; gap: 9px; }
+.bar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; font-size: 0.9rem; }
+.bar .track { grid-column: 1 / -1; height: 8px; background: var(--surface-2); border-radius: 99px; overflow: hidden; }
+.bar .fill { height: 100%; background: var(--accent); border-radius: 99px; }
+.bar .fill.ok { background: var(--inc); } .bar .fill.warn { background: var(--warn); } .bar .fill.over { background: var(--exp); }
+.bar .r { color: var(--muted); white-space: nowrap; }
+.pill { font-size: 0.72rem; font-weight: 600; padding: 2px 8px; border-radius: 99px; margin-left: 6px; }
+.pill.ok { background: var(--inc-soft); color: var(--inc); } .pill.warn { background: var(--warn-soft); color: var(--warn); } .pill.over { background: var(--exp-soft); color: var(--exp); }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.kpi { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 12px; min-width: 0; }
+.kpi .v { font-weight: 650; font-size: 1.05rem; margin-top: 2px; }
+.chart { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 8px 4px; overflow-x: auto; }
+.chart svg { display: block; width: 100%; min-width: 340px; height: auto; }
+.legend { display: flex; gap: 14px; font-size: 0.8rem; color: var(--muted); padding: 0 6px 8px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+table.mt { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+table.mt th, table.mt td { padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+table.mt th:first-child, table.mt td:first-child { text-align: left; }
+table.mt th { color: var(--muted); font-weight: 500; font-size: 0.78rem; }
+.tblwrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); }
+
+.list { display: flex; flex-direction: column; gap: 6px; }
+.li { display: grid; grid-template-columns: minmax(0, 1fr) 110px auto; gap: 8px; align-items: center; }
+.li.nob { grid-template-columns: minmax(0, 1fr) auto; }
+.li .name { padding: 8px 10px; background: var(--surface-2); border-radius: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.x { border: 0; background: transparent; color: var(--muted); width: 34px; height: 34px; border-radius: 8px; }
+.x:hover { background: var(--exp-soft); color: var(--exp); }
+.addline { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.hint { font-size: 0.82rem; color: var(--muted); }
+@media (max-width: 420px) {
+  .summary { grid-template-columns: 1fr 1fr; }
+  .summary > div:last-child { grid-column: 1 / -1; }
+  .li { grid-template-columns: minmax(0, 1fr) 90px auto; }
+}
+@media (prefers-reduced-motion: no-preference) { .bar .fill { transition: width .3s ease; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>Домашняя касса</h1>
+    <div class="month" role="group" aria-label="Месяц">
+      <button id="prev" aria-label="Предыдущий месяц">‹</button>
+      <span id="monthLabel" aria-live="polite"></span>
+      <button id="next" aria-label="Следующий месяц">›</button>
+    </div>
+  </header>
+
+  <div id="banner" class="banner" hidden></div>
+
+  <section class="summary" aria-label="Итоги месяца">
+    <div><div class="lbl">Доходы</div><div class="v inc num" id="sInc">—</div></div>
+    <div><div class="lbl">Расходы</div><div class="v exp num" id="sExp">—</div></div>
+    <div><div class="lbl">Остаток</div><div class="v num" id="sNet">—</div><div class="sub" id="sRate"></div></div>
+  </section>
+
+  <form class="card" id="form" autocomplete="off">
+    <div class="seg" role="group" aria-label="Тип операции">
+      <button type="button" class="e" id="tExp" aria-pressed="true">Расход</button>
+      <button type="button" class="i" id="tInc" aria-pressed="false">Доход</button>
+    </div>
+    <label class="amount-row" for="amount">
+      <input id="amount" inputmode="decimal" placeholder="0" aria-label="Сумма">
+      <span class="cur" id="curSign">BYN</span>
+    </label>
+    <div class="chips" id="cats" role="group" aria-label="Категория"></div>
+    <div class="row">
+      <div class="field"><span class="lbl">Дата</span><input type="date" id="date"></div>
+      <div class="field"><span class="lbl">Счёт</span><select id="acc"></select></div>
+    </div>
+    <div class="field"><span class="lbl">Комментарий</span><input id="note" placeholder="Необязательно, например «Евроопт»"></div>
+    <div class="actions">
+      <button class="btn" id="save" type="submit">Добавить</button>
+      <button class="btn ghost" id="cancel" type="button" hidden>Отменить правку</button>
+      <span id="formMsg" aria-live="polite"></span>
+    </div>
+  </form>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" id="tab-ops" aria-selected="true">Операции</button>
+    <button role="tab" id="tab-an" aria-selected="false">Аналитика</button>
+    <button role="tab" id="tab-bud" aria-selected="false">Бюджет</button>
+    <button role="tab" id="tab-set" aria-selected="false">Настройки</button>
+  </nav>
+
+  <section id="p-ops" role="tabpanel"></section>
+  <section id="p-an" role="tabpanel" hidden></section>
+  <section id="p-bud" role="tabpanel" hidden></section>
+  <section id="p-set" role="tabpanel" hidden></section>
+  <input type="file" id="importFile" accept=".json,application/json" hidden>
+</div>
+
+<script>
+const APP_VERSION = "1.0.0";
+const KEY = "kassa.v1";
+const DEF = {
+  currency: "BYN",
+  income: ["Зарплата", "Подработка", "Проценты и дивиденды", "Подарки", "Прочие доходы"],
+  expense: [
+    { name: "Жильё и коммуналка", budget: 0 }, { name: "Продукты", budget: 0 },
+    { name: "Кафе и рестораны", budget: 0 }, { name: "Транспорт", budget: 0 },
+    { name: "Здоровье", budget: 0 }, { name: "Одежда и обувь", budget: 0 },
+    { name: "Связь и подписки", budget: 0 }, { name: "Развлечения", budget: 0 },
+    { name: "Образование", budget: 0 }, { name: "Путешествия", budget: 0 },
+    { name: "Подарки другим", budget: 0 }, { name: "Кредиты и долги", budget: 0 },
+    { name: "Прочие расходы", budget: 0 }
+  ],
+  accounts: ["Карта", "Наличные", "Накопительный счёт"]
+};
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const pad = n => String(n).padStart(2, "0");
+const iso = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const ym = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+const nf = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 });
+const nf0 = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 });
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+
+/* ---------- storage (on this device) ---------- */
+let cfg = structuredClone(DEF), txs = [], lastBackup = null, storageOk = true;
+function load() {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return;
+    const d = JSON.parse(raw);
+    cfg = { ...structuredClone(DEF), ...(d.cfg || {}) };
+    txs = Array.isArray(d.txs) ? d.txs.filter(t => t && t.date && t.amount > 0) : [];
+    lastBackup = d.lastBackup || null;
+  } catch { storageOk = false; }
+}
+function persist() {
+  try { localStorage.setItem(KEY, JSON.stringify({ v: 1, cfg, txs, lastBackup })); storageOk = true; }
+  catch { storageOk = false; showBanner("Не удалось сохранить данные на устройстве. Освободите место или сделайте резервную копию."); }
+}
+load();
+if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+
+let type = "expense", cat = null, editId = null, tab = "ops", pendingDel = null;
+let month = new Date(); month = new Date(month.getFullYear(), month.getMonth(), 1);
+
+const money = (v, digits) => (digits === 0 ? nf0 : nf).format(v) + " " + cfg.currency;
+const monthName = d => { const s = d.toLocaleDateString("ru-RU", { month: "long", year: "numeric" }).replace(/\s*г\.?$/, ""); return s[0].toUpperCase() + s.slice(1); };
+const expNames = () => cfg.expense.map(e => e.name);
+const inMonth = (t, key) => (t.date || "").slice(0, 7) === key;
+function sums(key) {
+  let inc = 0, exp = 0;
+  for (const t of txs) if (inMonth(t, key)) t.type === "income" ? inc += t.amount : exp += t.amount;
+  return { inc, exp, net: inc - exp };
+}
+
+/* ---------- rendering ---------- */
+function renderHeader() {
+  $("monthLabel").textContent = monthName(month);
+  const s = sums(ym(month));
+  $("sInc").textContent = money(s.inc, 0);
+  $("sExp").textContent = money(s.exp, 0);
+  $("sNet").textContent = money(s.net, 0);
+  $("sNet").className = "v num " + (s.net < 0 ? "exp" : "");
+  $("sRate").textContent = s.inc > 0 ? `сбережено ${Math.round(s.net / s.inc * 100)}% дохода` : "";
+  $("curSign").textContent = cfg.currency;
+}
+function renderForm() {
+  $("tExp").setAttribute("aria-pressed", type === "expense");
+  $("tInc").setAttribute("aria-pressed", type === "income");
+  const list = type === "expense" ? expNames() : cfg.income;
+  if (cat && !list.includes(cat) && !editId) cat = null;
+  $("cats").innerHTML = list.map(n => `<button type="button" class="chip" aria-pressed="${n === cat}" data-cat="${esc(n)}">${esc(n)}</button>`).join("");
+  const accSel = $("acc"), keep = accSel.value;
+  accSel.innerHTML = cfg.accounts.map(a => `<option>${esc(a)}</option>`).join("");
+  if (cfg.accounts.includes(keep)) accSel.value = keep;
+  $("save").textContent = editId ? "Сохранить" : "Добавить";
+  $("cancel").hidden = !editId;
+}
+function renderOps() {
+  const key = ym(month);
+  const list = txs.filter(t => inMonth(t, key)).sort((a, b) => b.date.localeCompare(a.date) || (b.created || 0) - (a.created || 0));
+  const el = $("p-ops");
+  if (!list.length) {
+    el.innerHTML = txs.length
+      ? `<div class="empty"><b>В ${esc(monthName(month).toLowerCase())} операций нет</b>Листайте месяцы стрелками вверху.</div>`
+      : `<div class="empty"><b>Здесь появятся ваши операции</b>Введите сумму, выберите категорию и нажмите «Добавить». Лимиты бюджета задаются во вкладке «Настройки».</div>`;
+    return;
+  }
+  const byDay = {};
+  for (const t of list) (byDay[t.date] ||= []).push(t);
+  el.innerHTML = Object.entries(byDay).map(([d, items]) => {
+    const dd = new Date(d + "T00:00:00");
+    const head = dd.toLocaleDateString("ru-RU", { day: "numeric", month: "long", weekday: "short" });
+    const dayExp = items.filter(t => t.type === "expense").reduce((s, t) => s + t.amount, 0);
+    return `<div class="day"><h3><span>${esc(head)}</span><span class="num">${dayExp ? "−" + esc(money(dayExp)) : ""}</span></h3>` +
+      items.map(t => `<div class="tx">
+        <div class="main" data-edit="${esc(t.id)}" title="Нажмите, чтобы изменить">
+          <div class="cat">${esc(t.cat)}</div>
+          <div class="meta">${esc(t.acc || "")}${t.note ? " · " + esc(t.note) : ""}</div>
+        </div>
+        <div class="amt num ${t.type === "income" ? "inc" : ""}">${t.type === "income" ? "+" : "−"}${esc(money(t.amount))}</div>
+        <button class="del ${pendingDel === t.id ? "confirm" : ""}" data-del="${esc(t.id)}" aria-label="Удалить операцию">${pendingDel === t.id ? "Удалить?" : "✕"}</button>
+      </div>`).join("") + `</div>`;
+  }).join("");
+}
+function monthsBack(n) {
+  const out = [];
+  for (let i = n - 1; i >= 0; i--) out.push(new Date(month.getFullYear(), month.getMonth() - i, 1));
+  return out;
+}
+function renderAnalytics() {
+  const key = ym(month);
+  const exp = {};
+  let total = 0;
+  for (const t of txs) if (t.type === "expense" && inMonth(t, key)) { exp[t.cat] = (exp[t.cat] || 0) + t.amount; total += t.amount; }
+  const rows = Object.entries(exp).sort((a, b) => b[1] - a[1]);
+  const max = rows.length ? rows[0][1] : 1;
+
+  const ms = monthsBack(6).map(d => ({ d, ...sums(ym(d)) }));
+  const withData = ms.filter(m => m.inc || m.exp);
+  const avgExp = withData.length ? withData.reduce((s, m) => s + m.exp, 0) / withData.length : 0;
+  const avgInc = withData.length ? withData.reduce((s, m) => s + m.inc, 0) / withData.length : 0;
+  const now = new Date();
+  const isCur = ym(now) === key;
+  const daysIn = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+  const days = isCur ? now.getDate() : daysIn;
+  const perDay = total / days;
+
+  let html = `<div class="sec">
+    <div class="kpis">
+      <div class="kpi"><div class="lbl">Расход в день</div><div class="v num">${esc(money(perDay, 0))}</div></div>
+      <div class="kpi"><div class="lbl">${isCur ? "Прогноз на месяц" : "Расход за месяц"}</div><div class="v num">${esc(money(isCur ? perDay * daysIn : total, 0))}</div></div>
+      <div class="kpi"><div class="lbl">Средний доход, 6 мес.</div><div class="v num">${esc(money(avgInc, 0))}</div></div>
+      <div class="kpi"><div class="lbl">Средний расход, 6 мес.</div><div class="v num">${esc(money(avgExp, 0))}</div></div>
+    </div>
+    <h2>Куда ушли деньги в ${esc(monthName(month).toLowerCase())}</h2>`;
+  html += rows.length ? `<div class="bars">${rows.map(([n, v]) => `<div class="bar"><span>${esc(n)}</span><span class="r num">${esc(money(v, 0))} · ${Math.round(v / total * 100)}%</span><div class="track"><div class="fill" style="width:${(v / max * 100).toFixed(1)}%"></div></div></div>`).join("")}</div>`
+    : `<div class="empty"><b>Расходов за месяц нет</b>Здесь появится разбивка по категориям.</div>`;
+
+  html += `<h2>Доходы и расходы за 6 месяцев</h2><div class="chart">${chartSvg(ms)}
+    <div class="legend"><span><i style="background:var(--inc)"></i>Доходы</span><span><i style="background:var(--exp)"></i>Расходы</span></div></div>
+    <div class="tblwrap"><table class="mt"><thead><tr><th>Месяц</th><th>Доходы</th><th>Расходы</th><th>Остаток</th><th>Сбережено</th></tr></thead><tbody>
+    ${ms.slice().reverse().map(m => `<tr><td>${esc(monthName(m.d))}</td><td class="num">${esc(money(m.inc, 0))}</td><td class="num">${esc(money(m.exp, 0))}</td><td class="num" style="color:${m.net < 0 ? "var(--exp)" : "inherit"}">${esc(money(m.net, 0))}</td><td class="num">${m.inc ? Math.round(m.net / m.inc * 100) + "%" : "—"}</td></tr>`).join("")}
+    </tbody></table></div></div>`;
+  $("p-an").innerHTML = html;
+}
+function niceMax(v) {
+  if (v <= 0) return 1000;
+  const p = Math.pow(10, Math.floor(Math.log10(v)));
+  for (const m of [1, 2, 2.5, 5, 10]) if (m * p >= v) return m * p;
+  return 10 * p;
+}
+function chartSvg(ms) {
+  const W = 560, H = 210, L = 56, R = 8, T = 12, B = 28;
+  const top = niceMax(Math.max(...ms.map(m => Math.max(m.inc, m.exp))));
+  const y = v => T + (H - T - B) * (1 - v / top);
+  const gw = (W - L - R) / ms.length, bw = Math.min(22, gw / 3);
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Доходы и расходы по месяцам">`;
+  for (let i = 0; i <= 4; i++) {
+    const v = top * i / 4, yy = y(v);
+    s += `<line x1="${L}" x2="${W - R}" y1="${yy}" y2="${yy}" stroke="var(--line)" stroke-width="1"/>`;
+    s += `<text x="${L - 6}" y="${yy + 4}" text-anchor="end" font-size="11" fill="var(--muted)">${nf0.format(v)}</text>`;
+  }
+  ms.forEach((m, i) => {
+    const cx = L + gw * i + gw / 2;
+    s += `<rect x="${cx - bw - 2}" y="${y(m.inc)}" width="${bw}" height="${y(0) - y(m.inc)}" rx="3" fill="var(--inc)"><title>Доходы: ${money(m.inc, 0)}</title></rect>`;
+    s += `<rect x="${cx + 2}" y="${y(m.exp)}" width="${bw}" height="${y(0) - y(m.exp)}" rx="3" fill="var(--exp)"><title>Расходы: ${money(m.exp, 0)}</title></rect>`;
+    const lab = m.d.toLocaleDateString("ru-RU", { month: "short" }).replace(".", "");
+    const cur = ym(m.d) === ym(month);
+    s += `<text x="${cx}" y="${H - 8}" text-anchor="middle" font-size="11" fill="${cur ? "var(--fg)" : "var(--muted)"}" font-weight="${cur ? 600 : 400}">${esc(lab)}</text>`;
+  });
+  return s + `</svg>`;
+}
+function renderBudget() {
+  const key = ym(month);
+  const fact = {};
+  for (const t of txs) if (t.type === "expense" && inMonth(t, key)) fact[t.cat] = (fact[t.cat] || 0) + t.amount;
+  const planned = cfg.expense.filter(e => e.budget > 0);
+  const tb = planned.reduce((s, e) => s + e.budget, 0);
+  const tf = planned.reduce((s, e) => s + (fact[e.name] || 0), 0);
+  const state = (f, b) => f > b ? "over" : f >= 0.9 * b ? "warn" : "ok";
+  const label = { ok: "в норме", warn: "почти лимит", over: "перерасход" };
+  const line = (n, f, b) => {
+    const st = state(f, b), left = b - f;
+    return `<div class="bar"><span>${esc(n)}<span class="pill ${st}">${label[st]}</span></span>
+      <span class="r num">${esc(money(f, 0))} из ${esc(money(b, 0))}</span>
+      <div class="track"><div class="fill ${st}" style="width:${Math.min(100, b ? f / b * 100 : 0).toFixed(1)}%"></div></div>
+      <span class="hint" style="grid-column:1/-1">${left >= 0 ? "Осталось " + esc(money(left, 0)) : "Сверх лимита " + esc(money(-left, 0))}</span></div>`;
+  };
+  let html = `<div class="sec">`;
+  if (!planned.length) {
+    $("p-bud").innerHTML = html + `<div class="empty"><b>Бюджет пока не задан</b>Укажите месячные лимиты по категориям во вкладке «Настройки» — здесь появится план и факт.</div></div>`;
+    return;
+  }
+  html += `<div class="kpis">
+    <div class="kpi"><div class="lbl">План на месяц</div><div class="v num">${esc(money(tb, 0))}</div></div>
+    <div class="kpi"><div class="lbl">Потрачено</div><div class="v num">${esc(money(tf, 0))}</div></div>
+    <div class="kpi"><div class="lbl">${tb - tf >= 0 ? "Осталось" : "Перерасход"}</div><div class="v num" style="color:${tb - tf < 0 ? "var(--exp)" : "var(--inc)"}">${esc(money(Math.abs(tb - tf), 0))}</div></div>
+  </div><h2>План и факт по категориям</h2><div class="bars">${planned.map(e => line(e.name, fact[e.name] || 0, e.budget)).join("")}</div>`;
+  const unplanned = Object.entries(fact).filter(([n]) => !planned.some(e => e.name === n));
+  if (unplanned.length) html += `<h2>Расходы без лимита</h2><div class="bars">${unplanned.map(([n, v]) => `<div class="bar"><span>${esc(n)}</span><span class="r num">${esc(money(v, 0))}</span></div>`).join("")}</div>`;
+  $("p-bud").innerHTML = html + `</div>`;
+}
+function renderSettings(force) {
+  const el = $("p-set");
+  if (!force && el.contains(document.activeElement) && document.activeElement.tagName === "INPUT") return;
+  const lb = lastBackup ? new Date(lastBackup).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" }) : "ещё не делалась";
+  el.innerHTML = `<div class="sec">
+    <h2>Резервная копия</h2>
+    <p class="hint" style="margin:0">Все данные хранятся только на этом устройстве. Если удалить приложение или очистить данные браузера, они пропадут. Раз в месяц сохраняйте копию в файл (например, в Google Диск или Telegram «Избранное»). Последняя копия: <b>${esc(lb)}</b>.</p>
+    <div class="actions">
+      <button class="btn" id="backup">Сохранить резервную копию</button>
+      <button class="btn ghost" id="restore">Восстановить из файла</button>
+      <button class="btn ghost" id="exportCsv">Выгрузить CSV для Excel</button>
+    </div>
+    <span id="setMsg" class="hint" aria-live="polite">Всего операций: ${txs.length}</span>
+
+    <h2>Валюта</h2>
+    <div class="addline"><input class="inp" id="setCur" value="${esc(cfg.currency)}" maxlength="6" aria-label="Обозначение валюты"><span class="hint" style="align-self:center">BYN, Br, $, €</span></div>
+
+    <h2>Категории расходов и лимиты на месяц</h2>
+    <div class="list">${cfg.expense.map((e, i) => `<div class="li"><span class="name">${esc(e.name)}</span>
+      <input class="inp num" inputmode="decimal" data-budget="${i}" value="${e.budget || ""}" placeholder="без лимита" aria-label="Лимит для ${esc(e.name)}">
+      <button class="x" data-rm="expense" data-i="${i}" aria-label="Удалить категорию ${esc(e.name)}">✕</button></div>`).join("")}</div>
+    <div class="addline"><input class="inp" id="newExp" placeholder="Новая категория расходов"><button class="btn ghost" data-add="expense">Добавить</button></div>
+
+    <h2>Категории доходов</h2>
+    <div class="list">${cfg.income.map((n, i) => `<div class="li nob"><span class="name">${esc(n)}</span><button class="x" data-rm="income" data-i="${i}" aria-label="Удалить категорию ${esc(n)}">✕</button></div>`).join("")}</div>
+    <div class="addline"><input class="inp" id="newInc" placeholder="Новая категория доходов"><button class="btn ghost" data-add="income">Добавить</button></div>
+
+    <h2>Счета и кошельки</h2>
+    <div class="list">${cfg.accounts.map((n, i) => `<div class="li nob"><span class="name">${esc(n)}</span><button class="x" data-rm="accounts" data-i="${i}" aria-label="Удалить счёт ${esc(n)}">✕</button></div>`).join("")}</div>
+    <div class="addline"><input class="inp" id="newAcc" placeholder="Новый счёт"><button class="btn ghost" data-add="accounts">Добавить</button></div>
+    <p class="hint">Удаление категории не трогает уже внесённые операции — они остаются в истории и аналитике.</p>
+    <p class="hint">Версия ${APP_VERSION}</p>
+  </div>`;
+}
+function render() {
+  renderHeader(); renderForm();
+  if (tab === "ops") renderOps();
+  if (tab === "an") renderAnalytics();
+  if (tab === "bud") renderBudget();
+  if (tab === "set") renderSettings();
+  backupReminder();
+}
+function showBanner(html) { const b = $("banner"); b.innerHTML = html; b.hidden = !html; }
+function backupReminder() {
+  if (!storageOk) return;
+  const old = !lastBackup || Date.now() - lastBackup > 30 * 864e5;
+  if (txs.length >= 20 && old) showBanner(`<span>Давно не было резервной копии. Данные хранятся только на этом устройстве.</span><button class="btn small" id="bannerBackup">Сохранить копию</button>`);
+  else showBanner("");
+}
+
+/* ---------- files ---------- */
+async function offerFile(filename, text, mime) {
+  const blob = new Blob([text], { type: mime });
+  const file = new File([blob], filename, { type: mime });
+  if (navigator.canShare && navigator.canShare({ files: [file] }) && /Android|iPhone|iPad/i.test(navigator.userAgent)) {
+    try { await navigator.share({ files: [file], title: filename }); return true; }
+    catch (e) { if (e.name === "AbortError") return false; }
+  }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  return true;
+}
+async function doBackup() {
+  const data = JSON.stringify({ app: "kassa", v: 1, exported: new Date().toISOString(), cfg, txs }, null, 1);
+  const ok = await offerFile(`kassa-backup-${iso(new Date())}.json`, data, "application/json");
+  if (ok) { lastBackup = Date.now(); persist(); render(); const m = $("setMsg"); if (m) m.textContent = "Резервная копия сохранена."; }
+}
+async function exportCsv() {
+  const q = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const rows = txs.slice().sort((a, b) => a.date.localeCompare(b.date));
+  const csv = "﻿" + ["Дата;Тип;Категория;Сумма;Счёт;Комментарий"].concat(
+    rows.map(t => [t.date.split("-").reverse().join("."), t.type === "income" ? "Доход" : "Расход", q(t.cat), String(t.amount).replace(".", ","), q(t.acc), q(t.note)].join(";"))
+  ).join("\r\n");
+  await offerFile(`kassa-operacii-${iso(new Date())}.csv`, csv, "text/csv");
+}
+$("importFile").onchange = async e => {
+  const f = e.target.files[0]; e.target.value = "";
+  if (!f) return;
+  const msg = () => $("setMsg");
+  try {
+    const d = JSON.parse(await f.text());
+    if (d.app !== "kassa" || !Array.isArray(d.txs)) throw new Error("format");
+    const have = new Set(txs.map(t => t.id));
+    const add = d.txs.filter(t => t && t.id && t.date && t.amount > 0 && !have.has(t.id));
+    txs = txs.concat(add);
+    if (d.cfg) cfg = { ...structuredClone(DEF), ...d.cfg };
+    persist(); render(); renderSettings(true);
+    msg().textContent = `Восстановлено: добавлено ${add.length} операций, настройки загружены из копии.`;
+  } catch {
+    if (msg()) msg().textContent = "Этот файл не похож на резервную копию «Домашней кассы». Выберите файл kassa-backup-….json.";
+  }
+};
+
+/* ---------- events ---------- */
+$("prev").onclick = () => { month = new Date(month.getFullYear(), month.getMonth() - 1, 1); pendingDel = null; render(); };
+$("next").onclick = () => { month = new Date(month.getFullYear(), month.getMonth() + 1, 1); pendingDel = null; render(); };
+$("tExp").onclick = () => { type = "expense"; cat = null; renderForm(); };
+$("tInc").onclick = () => { type = "income"; cat = null; renderForm(); };
+$("cats").onclick = e => { const b = e.target.closest("[data-cat]"); if (!b) return; cat = b.dataset.cat; renderForm(); };
+$("date").value = iso(new Date());
+$("banner").onclick = e => { if (e.target.id === "bannerBackup") doBackup(); };
+
+function resetForm() { editId = null; cat = null; $("amount").value = ""; $("note").value = ""; renderForm(); }
+$("cancel").onclick = () => { resetForm(); $("formMsg").textContent = ""; };
+$("form").onsubmit = e => {
+  e.preventDefault();
+  const msg = $("formMsg");
+  const amount = parseFloat($("amount").value.replace(/\s/g, "").replace(",", "."));
+  if (!(amount > 0)) { msg.className = "err"; msg.textContent = "Введите сумму больше нуля."; $("amount").focus(); return; }
+  if (!cat) { msg.className = "err"; msg.textContent = "Выберите категорию."; return; }
+  const date = $("date").value || iso(new Date());
+  const doc = { date, type, cat, amount: Math.round(amount * 100) / 100, acc: $("acc").value, note: $("note").value.trim() };
+  if (editId) { const t = txs.find(x => x.id === editId); if (t) Object.assign(t, doc); }
+  else txs.push({ id: uid(), created: Date.now(), ...doc });
+  persist();
+  msg.className = "toast"; msg.textContent = editId ? "Изменено" : `Добавлено: ${cat}, ${money(doc.amount)}`;
+  const d = new Date(date + "T00:00:00");
+  if (ym(d) !== ym(month)) month = new Date(d.getFullYear(), d.getMonth(), 1);
+  resetForm(); render();
+};
+
+$("p-ops").onclick = e => {
+  const del = e.target.closest("[data-del]");
+  if (del) {
+    const id = del.dataset.del;
+    if (pendingDel !== id) { pendingDel = id; renderOps(); return; }
+    pendingDel = null; txs = txs.filter(t => t.id !== id); persist(); render(); return;
+  }
+  const ed = e.target.closest("[data-edit]");
+  if (ed) {
+    const t = txs.find(x => x.id === ed.dataset.edit); if (!t) return;
+    editId = t.id; type = t.type; cat = t.cat;
+    $("amount").value = String(t.amount).replace(".", ","); $("date").value = t.date; $("note").value = t.note || "";
+    renderForm(); if (cfg.accounts.includes(t.acc)) $("acc").value = t.acc;
+    $("formMsg").className = "hint"; $("formMsg").textContent = "Правка операции";
+    $("form").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+};
+document.addEventListener("click", e => {
+  if (pendingDel && !e.target.closest("[data-del]")) { pendingDel = null; if (tab === "ops") renderOps(); }
+}, true);
+
+const tabs = { ops: "tab-ops", an: "tab-an", bud: "tab-bud", set: "tab-set" };
+for (const [k, id] of Object.entries(tabs)) $(id).onclick = () => {
+  tab = k; pendingDel = null;
+  for (const [k2, id2] of Object.entries(tabs)) { $(id2).setAttribute("aria-selected", k2 === k); $("p-" + k2).hidden = k2 !== k; }
+  render();
+};
+
+$("p-set").addEventListener("input", e => {
+  if (e.target.id === "setCur") { cfg.currency = e.target.value.trim() || "BYN"; renderHeader(); persist(); }
+  if (e.target.dataset.budget !== undefined) {
+    const v = parseFloat(e.target.value.replace(/\s/g, "").replace(",", "."));
+    cfg.expense[+e.target.dataset.budget].budget = v > 0 ? v : 0; persist();
+  }
+});
+$("p-set").addEventListener("keydown", e => {
+  if (e.key === "Enter" && ["newExp", "newInc", "newAcc"].includes(e.target.id)) { e.preventDefault(); e.target.nextElementSibling.click(); }
+});
+$("p-set").addEventListener("click", e => {
+  const add = e.target.closest("[data-add]"), rm = e.target.closest("[data-rm]");
+  if (add) {
+    const k = add.dataset.add, inp = { expense: "newExp", income: "newInc", accounts: "newAcc" }[k];
+    const v = $(inp).value.trim(); if (!v) return;
+    const exists = k === "expense" ? expNames().includes(v) : cfg[k].includes(v);
+    if (exists) { $("setMsg").textContent = `«${v}» уже есть в списке.`; return; }
+    k === "expense" ? cfg.expense.push({ name: v, budget: 0 }) : cfg[k].push(v);
+    persist(); renderSettings(true); renderForm();
+  }
+  if (rm) { cfg[rm.dataset.rm].splice(+rm.dataset.i, 1); persist(); renderSettings(true); renderForm(); }
+  if (e.target.id === "backup") doBackup();
+  if (e.target.id === "restore") $("importFile").click();
+  if (e.target.id === "exportCsv") exportCsv();
+});
+
+render();
+if (!storageOk) showBanner("Хранилище браузера недоступно — данные не сохранятся. Откройте приложение не в режиме инкогнито.");
+
+if ("serviceWorker" in navigator && location.protocol !== "file:") {
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+}
+</script>
+</body>
+</html>
